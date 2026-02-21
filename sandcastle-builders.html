@@ -826,7 +826,7 @@ function drawToolbar() {
   ctx.strokeStyle = 'rgba(255,80,80,0.5)'; ctx.lineWidth = 1.5;
   roundRect(W-155, TB_Y+20, 110, 60, 10); ctx.stroke();
   ctx.fillStyle = '#ff6666'; ctx.font = 'bold 16px Bebas Neue, Impact, sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText('🗑️ CLEAR ALL', W-100, TB_Y+57);
+  ctx.fillText('🗑️ HARD RESET', W-100, TB_Y+57);
 
   // Sand counter - neon style
   const cnt = countSand();
@@ -1536,6 +1536,59 @@ function drawPlayScreen() {
   drawSky();
   if (!bgDrawn) renderBackground();
   ctx.drawImage(bgCanvas, 0, 0);
+
+  // === ANIMATED WAVING FLAGS on buildings ===
+  const ft = Date.now() * 0.001;
+  function drawGameFlag(fx, fy, poleH, flagW, flagH, drawStripes) {
+    // Pole
+    ctx.fillStyle = '#889'; ctx.fillRect(fx-0.5, fy-poleH, 1.5, poleH);
+    ctx.fillStyle = '#bcc'; ctx.beginPath(); ctx.arc(fx, fy-poleH, 2, 0, Math.PI*2); ctx.fill();
+    // Flag segments
+    const segs = 8, segW = flagW / segs;
+    const flagTop = fy - poleH + 3;
+    for (let s = 0; s < segs; s++) {
+      const sx = fx + 2 + s * segW;
+      const w1 = Math.sin(ft*2.5 + s*0.6) * 2.5;
+      const w2 = Math.sin(ft*2.5 + (s+1)*0.6) * 2.5;
+      drawStripes(sx, flagTop, segW + 0.5, flagH, w1, w2);
+    }
+  }
+
+  // Latvian flag (maroon-white-maroon) on tallest RIGHT building (x:840, w:38, h:280, spire top at ~165)
+  drawGameFlag(840 + 19, GROUND_Y - 280 - 25, 22, 26, 16, (sx, sy, sw, sh, w1, w2) => {
+    const s1 = sh * 0.4, s2 = sh * 0.2;
+    // Top maroon
+    ctx.fillStyle = '#9b1b30';
+    ctx.beginPath(); ctx.moveTo(sx,sy+w1); ctx.lineTo(sx+sw,sy+w2); ctx.lineTo(sx+sw,sy+s1+w2); ctx.lineTo(sx,sy+s1+w1); ctx.fill();
+    // White
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.moveTo(sx,sy+s1+w1); ctx.lineTo(sx+sw,sy+s1+w2); ctx.lineTo(sx+sw,sy+s1+s2+w2); ctx.lineTo(sx,sy+s1+s2+w1); ctx.fill();
+    // Bottom maroon
+    ctx.fillStyle = '#9b1b30';
+    ctx.beginPath(); ctx.moveTo(sx,sy+s1+s2+w1); ctx.lineTo(sx+sw,sy+s1+s2+w2); ctx.lineTo(sx+sw,sy+sh+w2); ctx.lineTo(sx,sy+sh+w1); ctx.fill();
+  });
+
+  // USA flag on tallest LEFT building (x:40, w:38, h:240, spire top at ~205)
+  drawGameFlag(40 + 19, GROUND_Y - 240 - 25, 22, 26, 16, (sx, sy, sw, sh, w1, w2) => {
+    const sH = sh / 13;
+    // 13 stripes
+    for (let st = 0; st < 13; st++) {
+      ctx.fillStyle = st%2===0 ? '#b22234' : '#fff';
+      const y1 = sy + st*sH;
+      ctx.beginPath(); ctx.moveTo(sx,y1+w1); ctx.lineTo(sx+sw,y1+w2); ctx.lineTo(sx+sw,y1+sH+0.5+w2); ctx.lineTo(sx,y1+sH+0.5+w1); ctx.fill();
+    }
+    // Blue canton over first 2 segments only (left part of flag)
+    if (sx < 40 + 19 + 2 + 26*0.45) {
+      ctx.fillStyle = '#3c3b6e';
+      ctx.beginPath(); ctx.moveTo(sx,sy+w1); ctx.lineTo(sx+sw,sy+w2); ctx.lineTo(sx+sw,sy+sh*0.54+w2); ctx.lineTo(sx,sy+sh*0.54+w1); ctx.fill();
+      // Stars
+      ctx.fillStyle = '#fff';
+      for (let r=0;r<3;r++) for (let c=0;c<2;c++) {
+        ctx.beginPath(); ctx.arc(sx+2+c*((sw-2)/2), sy+2.5+r*(sh*0.15)+w1+(w2-w1)*0.3, 0.8, 0, Math.PI*2); ctx.fill();
+      }
+    }
+  });
+
   drawOceanWaves();
   drawGrid();
   drawParticles();
