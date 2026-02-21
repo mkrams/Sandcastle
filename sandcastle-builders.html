@@ -497,7 +497,7 @@ function drawOceanWaves() {
 }
 
 // ============ SAND PHYSICS ============
-// Cell states: 0=empty, 1=dry sand, 2=wet sand, 3=falling water
+// Cell states: 0=empty, 1=dry sand, 2=wet sand, 3=falling water, 4=packed sand (stackable, falls only straight down)
 
 function simulateSand() {
   // Process bottom-up: sand gravity + water gravity
@@ -506,7 +506,19 @@ function simulateSand() {
     for (let ci = 0; ci < COLS; ci++) {
       const c = ltr ? ci : COLS - 1 - ci;
       const v = cellAt(c, r);
-      if (v === 0 || v === 2) continue;
+      if (v === 0) continue;
+
+      if (v === 2) {
+        // WET SAND — falls straight down if unsupported, no sideways drift
+        if (cellAt(c, r+1) === 0) { setCell(c,r+1,2); setCell(c,r,0); }
+        continue;
+      }
+
+      if (v === 4) {
+        // PACKED SAND — only falls straight down, no sideways drift
+        if (cellAt(c, r+1) === 0) { setCell(c,r+1,4); setCell(c,r,0); }
+        continue;
+      }
 
       if (v === 3) {
         // FALLING WATER — falls through air, soaks deep into sand
@@ -514,13 +526,13 @@ function simulateSand() {
         if (below === 0) {
           // Fall through air
           setCell(c, r+1, 3); setCell(c, r, 0);
-        } else if (below === 1) {
-          // Hit dry sand → soak it, and try to soak a column below too
+        } else if (below === 1 || below === 4) {
+          // Hit dry/packed sand → soak it, and try to soak a column below too
           setCell(c, r+1, 2); setCell(c, r, 0);
-          // Penetrate deeper: soak dry sand cells below in a column
+          // Penetrate deeper: soak dry/packed sand cells below in a column
           for (let depth = 2; depth <= 12; depth++) {
             const deep = cellAt(c, r+depth);
-            if (deep === 1) { setCell(c, r+depth, 2); }
+            if (deep === 1 || deep === 4) { setCell(c, r+depth, 2); }
             else if (deep === 2) { continue; } // skip wet, keep going
             else { break; } // hit air or boundary, stop
           }
@@ -529,12 +541,12 @@ function simulateSand() {
           let soaked = false;
           for (let depth = 2; depth <= 16; depth++) {
             const deep = cellAt(c, r+depth);
-            if (deep === 1) {
-              // Found dry sand underneath — soak it and a few neighbors
+            if (deep === 1 || deep === 4) {
+              // Found dry/packed sand underneath — soak it and a few neighbors
               setCell(c, r+depth, 2);
-              // Also soak nearby dry sand at this depth
-              if (cellAt(c-1, r+depth) === 1) setCell(c-1, r+depth, 2);
-              if (cellAt(c+1, r+depth) === 1) setCell(c+1, r+depth, 2);
+              // Also soak nearby dry/packed sand at this depth
+              if (cellAt(c-1, r+depth) === 1 || cellAt(c-1, r+depth) === 4) setCell(c-1, r+depth, 2);
+              if (cellAt(c+1, r+depth) === 1 || cellAt(c+1, r+depth) === 4) setCell(c+1, r+depth, 2);
               soaked = true; break;
             } else if (deep === 2) { continue; } // keep going through wet
             else { break; } // hit air or boundary
@@ -546,8 +558,8 @@ function simulateSand() {
             const dir = Math.random() < 0.5 ? -1 : 1;
             const sideA = cellAt(c+dir, r+1);
             const sideB = cellAt(c-dir, r+1);
-            if (sideA === 1) { setCell(c+dir, r+1, 2); setCell(c, r, 0); }
-            else if (sideB === 1) { setCell(c-dir, r+1, 2); setCell(c, r, 0); }
+            if (sideA === 1 || sideA === 4) { setCell(c+dir, r+1, 2); setCell(c, r, 0); }
+            else if (sideB === 1 || sideB === 4) { setCell(c-dir, r+1, 2); setCell(c, r, 0); }
             else if (sideA === 0) { setCell(c+dir, r+1, 3); setCell(c, r, 0); }
             else if (sideB === 0) { setCell(c-dir, r+1, 3); setCell(c, r, 0); }
             else { setCell(c, r, 0); } // fully saturated, evaporate
@@ -633,6 +645,39 @@ function addWaterAt(px, py, radius) {
   }
 }
 
+function addPackedSandAt(px, py, radius) {
+  const {c:cc, r:rc} = pxToGrid(px, py);
+  const rr = Math.ceil(radius / CELL);
+  let placed = 0;
+  for (let dr = -rr; dr <= rr; dr++) {
+    for (let dc = -rr; dc <= rr; dc++) {
+      if (dc*dc+dr*dr <= rr*rr && Math.random() < 0.5) {
+        const nc=cc+dc, nr=rc+dr;
+        if (cellAt(nc,nr)===0) { setCell(nc,nr,4); placed++; }
+      }
+    }
+  }
+  if (placed > 0) addScore(placed, px, py);
+}
+
+function digAt(px, py, radius) {
+  const {c:cc, r:rc} = pxToGrid(px, py);
+  const rr = Math.ceil(radius / CELL);
+  let removed = 0;
+  for (let dr = -rr; dr <= rr; dr++) {
+    for (let dc = -rr; dc <= rr; dc++) {
+      if (dc*dc+dr*dr <= rr*rr) {
+        const nc=cc+dc, nr=rc+dr;
+        const v = cellAt(nc, nr);
+        if (v === 1 || v === 2 || v === 4) {
+          setCell(nc, nr, 0);
+          removed++;
+        }
+      }
+    }
+  }
+}
+
 // ============ DRAW SAND GRID ============
 function drawGrid() {
   const imgData = ctx.getImageData(GRID_X0, GRID_Y0, COLS*CELL, ROWS*CELL);
@@ -648,6 +693,10 @@ function drawGrid() {
       } else if (v === 2) {
         const n = ((c*7+r*13)%17);
         cr=170+(n%5)*2; cg=145+(n%4)*2; cb=65+(n%6)*2;
+      } else if (v === 4) {
+        // Packed sand — lighter, slightly grey-tan to look compacted
+        const n = ((c*7+r*13)%17);
+        cr=200+(n%4)*3; cg=185+(n%3)*3; cb=130+(n%5)*3;
       } else if (v === 3) {
         // Falling water — translucent blue
         cr=60; cg=160; cb=230; ca=180;
@@ -875,6 +924,102 @@ function drawSandBucket(x, y) {
   ctx.restore();
 }
 
+function drawPackedSandIcon(x, y) {
+  const t = Date.now() * 0.003;
+  ctx.save(); ctx.translate(x, y);
+
+  // Neon glow
+  ctx.shadowColor = '#44ff88'; ctx.shadowBlur = 14;
+
+  // Castle tower shape — flat-topped trapezoid
+  const towerG = ctx.createLinearGradient(-14, -22, 14, 4);
+  towerG.addColorStop(0, '#88aa55');
+  towerG.addColorStop(0.3, '#bbdd88');
+  towerG.addColorStop(0.5, '#ddeebb');
+  towerG.addColorStop(0.7, '#bbdd88');
+  towerG.addColorStop(1, '#667744');
+  ctx.fillStyle = towerG;
+  ctx.beginPath();
+  ctx.moveTo(-14, 4); ctx.lineTo(-12, -18); ctx.lineTo(12, -18); ctx.lineTo(14, 4);
+  ctx.closePath(); ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Battlements on top
+  ctx.fillStyle = '#bbdd88';
+  for (let i = -2; i <= 2; i++) {
+    ctx.fillRect(-12 + i * 6, -24, 4, 6);
+  }
+
+  // Neon accent stripes
+  ctx.fillStyle = 'rgba(0,255,100,' + (0.4 + Math.sin(t*1.1)*0.2) + ')';
+  ctx.fillRect(-12, -12, 24, 2);
+  ctx.fillRect(-13, -4, 26, 2);
+
+  // Brick pattern
+  ctx.strokeStyle = 'rgba(80,100,40,0.4)'; ctx.lineWidth = 0.5;
+  for (let row = 0; row < 3; row++) {
+    const ry = -16 + row * 7;
+    ctx.beginPath(); ctx.moveTo(-13, ry); ctx.lineTo(13, ry); ctx.stroke();
+    const off = row % 2 === 0 ? 0 : 4;
+    for (let b = -12 + off; b < 12; b += 8) {
+      ctx.beginPath(); ctx.moveTo(b, ry); ctx.lineTo(b, ry + 7); ctx.stroke();
+    }
+  }
+
+  // Door/window
+  ctx.fillStyle = 'rgba(40,60,30,0.5)';
+  ctx.beginPath(); ctx.arc(0, -6, 3, Math.PI, 0); ctx.lineTo(3, 2); ctx.lineTo(-3, 2); ctx.closePath(); ctx.fill();
+
+  ctx.restore();
+}
+
+function drawShovelIcon(x, y) {
+  const t = Date.now() * 0.003;
+  ctx.save(); ctx.translate(x, y);
+
+  // Handle — wooden stick
+  ctx.shadowColor = '#ff8844'; ctx.shadowBlur = 10;
+  const handleG = ctx.createLinearGradient(-2, -30, 4, -30);
+  handleG.addColorStop(0, '#8B5E3C');
+  handleG.addColorStop(0.4, '#C4915C');
+  handleG.addColorStop(0.6, '#DEB887');
+  handleG.addColorStop(1, '#8B5E3C');
+  ctx.fillStyle = handleG;
+  ctx.save();
+  ctx.rotate(-0.25);
+  ctx.fillRect(-2, -32, 4, 30);
+  // Handle grip neon
+  ctx.fillStyle = 'rgba(255,100,50,' + (0.5 + Math.sin(t)*0.3) + ')';
+  ctx.fillRect(-2.5, -34, 5, 6);
+  ctx.restore();
+  ctx.shadowBlur = 0;
+
+  // Blade — metallic
+  const bladeG = ctx.createLinearGradient(-12, 0, 12, 0);
+  bladeG.addColorStop(0, '#666');
+  bladeG.addColorStop(0.3, '#bbb');
+  bladeG.addColorStop(0.5, '#eee');
+  bladeG.addColorStop(0.7, '#bbb');
+  bladeG.addColorStop(1, '#666');
+  ctx.fillStyle = bladeG;
+  ctx.shadowColor = '#aaaaff'; ctx.shadowBlur = 8;
+  ctx.beginPath();
+  ctx.moveTo(-12, 0); ctx.lineTo(-8, 14); ctx.quadraticCurveTo(0, 18, 8, 14);
+  ctx.lineTo(12, 0); ctx.closePath(); ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // Blade edge highlight
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(-10, 2); ctx.quadraticCurveTo(0, 16, 10, 2); ctx.stroke();
+
+  // Neon accent on blade
+  ctx.fillStyle = 'rgba(150,150,255,' + (0.3 + Math.sin(t*1.4)*0.2) + ')';
+  ctx.fillRect(-8, 4, 16, 2);
+
+  ctx.restore();
+}
+
+
 // ============ TOOLBAR ============
 const TB_Y = 540, TB_H = 80;
 
@@ -892,7 +1037,7 @@ function roundRect(x,y,w,h,r) {
 }
 
 function drawToolbar() {
-  // === SLIM TOOLBAR BACKDROP ===
+  // === TOOLBAR BACKDROP ===
   const barX = 30, barW = W - 60;
   ctx.fillStyle = 'rgba(8,3,18,0.88)';
   roundRect(barX, TB_Y, barW, TB_H, 14); ctx.fill();
@@ -901,70 +1046,88 @@ function drawToolbar() {
   roundRect(barX, TB_Y, barW, TB_H, 14); ctx.stroke();
   ctx.shadowBlur = 0;
 
-  // Layout: icon buttons on left, reset on right
-  const btnSize = 56, btnY = TB_Y + (TB_H - btnSize) / 2;
-  const sandX = 50, waterX = 130;
-  const sandActive = tool === 'sand', waterActive = tool === 'water';
+  // Layout: 4 tool buttons evenly on left, score center, reset right
+  const btnSize = 54, btnY = TB_Y + (TB_H - btnSize) / 2;
+  const gap = 8;
+  const btn1X = 45;
+  const btn2X = btn1X + btnSize + gap;
+  const btn3X = btn2X + btnSize + gap;
+  const btn4X = btn3X + btnSize + gap;
 
-  // === SAND BUTTON ===
-  drawIconBtn(sandX, btnY, btnSize, sandActive, '#ff8844');
-  // Sand bucket visual range: ~34w x 45h, centered at origin, bulk from y:-26 to y:2 → visual center ~y:-12
-  drawSandBucket(sandX + btnSize/2, btnY + btnSize/2 + 12);
-
-  // === WATER BUTTON ===
-  drawIconBtn(waterX, btnY, btnSize, waterActive, '#44ccff');
-  // Watering can visual range: ~68w x 50h, centered at origin, bulk from y:-14 to y:16 → visual center ~y:1
-  // But with handle it's y:-34 to y:16 → visual center ~y:-9. Scale down to fit.
+  // === 1. SAND BUCKET ===
+  drawIconBtn(btn1X, btnY, btnSize, tool === 'sand', '#ff8844');
   ctx.save();
-  const wcx = waterX + btnSize/2, wcy = btnY + btnSize/2 + 4;
-  ctx.translate(wcx, wcy);
-  ctx.scale(0.75, 0.75);
-  ctx.translate(-wcx, -wcy);
-  drawWateringCan(wcx, wcy, pouring && waterActive ? 0.35 : 0);
+  const sb1x = btn1X + btnSize/2, sb1y = btnY + btnSize/2 + 10;
+  ctx.translate(sb1x, sb1y); ctx.scale(0.72, 0.72); ctx.translate(-sb1x, -sb1y);
+  drawSandBucket(sb1x, sb1y);
   ctx.restore();
 
-  // === HARD RESET BUTTON — with padding from edge ===
-  const resetW = 100, resetH = 40;
-  const rstX = W - resetW - 50, rstY = TB_Y + (TB_H - resetH) / 2;
+  // === 2. WATERING CAN ===
+  drawIconBtn(btn2X, btnY, btnSize, tool === 'water', '#44ccff');
+  ctx.save();
+  const wc2x = btn2X + btnSize/2, wc2y = btnY + btnSize/2 + 2;
+  ctx.translate(wc2x, wc2y); ctx.scale(0.65, 0.65); ctx.translate(-wc2x, -wc2y);
+  drawWateringCan(wc2x, wc2y, pouring && tool === 'water' ? 0.35 : 0);
+  ctx.restore();
+
+  // === 3. PACKED SAND (castle mold) ===
+  drawIconBtn(btn3X, btnY, btnSize, tool === 'packed', '#44ff88');
+  ctx.save();
+  const ps3x = btn3X + btnSize/2, ps3y = btnY + btnSize/2 + 4;
+  ctx.translate(ps3x, ps3y); ctx.scale(0.78, 0.78); ctx.translate(-ps3x, -ps3y);
+  drawPackedSandIcon(ps3x, ps3y);
+  ctx.restore();
+
+  // === 4. SHOVEL (dig/remove) ===
+  drawIconBtn(btn4X, btnY, btnSize, tool === 'shovel', '#aaaaff');
+  ctx.save();
+  const sh4x = btn4X + btnSize/2, sh4y = btnY + btnSize/2 + 2;
+  ctx.translate(sh4x, sh4y); ctx.scale(0.72, 0.72); ctx.translate(-sh4x, -sh4y);
+  drawShovelIcon(sh4x, sh4y);
+  ctx.restore();
+
+  // === HARD RESET BUTTON ===
+  const resetW = 90, resetH = 36;
+  const rstX = W - resetW - 48, rstY = TB_Y + (TB_H - resetH) / 2;
   ctx.fillStyle = 'rgba(60,10,15,0.5)';
   roundRect(rstX, rstY, resetW, resetH, 10); ctx.fill();
   ctx.strokeStyle = 'rgba(255,60,60,0.4)'; ctx.lineWidth = 1;
   roundRect(rstX, rstY, resetW, resetH, 10); ctx.stroke();
   ctx.textAlign = 'center';
-  ctx.font = 'bold 14px Bebas Neue, Impact, sans-serif';
+  ctx.font = 'bold 13px Bebas Neue, Impact, sans-serif';
   ctx.fillStyle = '#ff5555';
   ctx.fillText('HARD RESET', rstX + resetW/2, rstY + resetH/2 + 5);
 
-  // === SCORE DISPLAY — centered ===
+  // === SCORE DISPLAY — between tools and reset ===
+  const scoreX = (btn4X + btnSize + rstX) / 2;
   const cnt = countSand();
-  const scoreX = W / 2;
   ctx.textAlign = 'center';
-  // Main score
-  ctx.font = 'bold 28px Bebas Neue, Impact, sans-serif';
-  ctx.shadowColor = '#ff3388'; ctx.shadowBlur = 10;
-  const scoreGrad = ctx.createLinearGradient(scoreX-60, 0, scoreX+60, 0);
+  ctx.font = 'bold 26px Bebas Neue, Impact, sans-serif';
+  ctx.shadowColor = '#ff3388'; ctx.shadowBlur = 8;
+  const scoreGrad = ctx.createLinearGradient(scoreX-50, 0, scoreX+50, 0);
   scoreGrad.addColorStop(0, '#ff4499'); scoreGrad.addColorStop(0.5, '#ffcc44'); scoreGrad.addColorStop(1, '#44ddff');
   ctx.fillStyle = scoreGrad;
-  ctx.fillText(score.toLocaleString(), scoreX, TB_Y + 32);
+  ctx.fillText(score.toLocaleString(), scoreX, TB_Y + 30);
   ctx.shadowBlur = 0;
-  // Sand / Hardened counts smaller
-  ctx.font = 'bold 12px Bebas Neue, Impact, sans-serif';
-  ctx.fillStyle = 'rgba(255,170,80,0.6)';
-  ctx.fillText('SAND ' + cnt.total, scoreX - 50, TB_Y + 52);
-  ctx.fillStyle = 'rgba(80,200,255,0.6)';
-  ctx.fillText('HARD ' + cnt.wet, scoreX + 50, TB_Y + 52);
-  // Combo indicator
+  // Counts
+  ctx.font = 'bold 11px Bebas Neue, Impact, sans-serif';
+  ctx.fillStyle = 'rgba(255,170,80,0.5)';
+  ctx.fillText(cnt.total + ' SAND', scoreX, TB_Y + 48);
+  ctx.fillStyle = 'rgba(80,200,255,0.5)';
+  ctx.fillText(cnt.wet + ' HARD', scoreX - 40, TB_Y + 62);
+  ctx.fillStyle = 'rgba(100,255,140,0.5)';
+  ctx.fillText(cnt.packed + ' PACK', scoreX + 40, TB_Y + 62);
+  // Combo
   if (combo >= 15) {
     const pulse = 0.7 + Math.sin(Date.now() * 0.008) * 0.3;
-    ctx.font = 'bold italic 16px Bebas Neue, Impact, sans-serif';
-    let comboLabel = 'COMBO x2';
-    let comboCol = '#ffcc00';
+    ctx.font = 'bold italic 14px Bebas Neue, Impact, sans-serif';
+    let comboLabel = 'COMBO x2', comboCol = '#ffcc00';
     if (combo >= 100) { comboLabel = 'UNSTOPPABLE x5'; comboCol = '#ff22ff'; }
     else if (combo >= 50) { comboLabel = 'INSANE x4'; comboCol = '#ff4444'; }
     else if (combo >= 30) { comboLabel = 'ON FIRE x3'; comboCol = '#ff8800'; }
     ctx.shadowColor = comboCol; ctx.shadowBlur = 12 * pulse;
     ctx.fillStyle = comboCol;
-    ctx.fillText(comboLabel, scoreX, TB_Y + 70);
+    ctx.fillText(comboLabel, scoreX, TB_Y + 76);
     ctx.shadowBlur = 0;
   }
 }
@@ -986,9 +1149,13 @@ function drawIconBtn(x, y, size, active, neonColor) {
 }
 
 function countSand() {
-  let total=0, wet=0;
-  for(let i=0;i<grid.length;i++) { if(grid[i]===1)total++; if(grid[i]===2){total++;wet++;} }
-  return {total,wet};
+  let total=0, wet=0, packed=0;
+  for(let i=0;i<grid.length;i++) {
+    if(grid[i]===1) total++;
+    if(grid[i]===2) { total++; wet++; }
+    if(grid[i]===4) { total++; packed++; }
+  }
+  return {total,wet,packed};
 }
 
 // ============ TITLE SCREEN - GTA 6 MIAMI VICE ============
@@ -1753,7 +1920,9 @@ function drawPlayScreen() {
   // Tool cursor
   if (pouring) {
     if (tool === 'water') drawWateringCan(pourPx, pourPy - 30, 0.4);
-    if (tool === 'sand') drawSandBucket(pourPx, pourPy - 28);
+    else if (tool === 'sand') drawSandBucket(pourPx, pourPy - 28);
+    else if (tool === 'packed') drawPackedSandIcon(pourPx, pourPy - 26);
+    else if (tool === 'shovel') drawShovelIcon(pourPx, pourPy - 26);
   }
 
   drawToolbar();
@@ -1794,9 +1963,12 @@ function onDown(e) {
 
   // Toolbar
   if (y > TB_Y) {
-    if (x > 40 && x < 120 && y > TB_Y+5 && y < TB_Y+TB_H-5) { tool = 'sand'; return; }
-    if (x > 120 && x < 200 && y > TB_Y+5 && y < TB_Y+TB_H-5) { tool = 'water'; return; }
-    if (x > W-150 && x < W-50 && y > TB_Y+5 && y < TB_Y+TB_H-5) { grid = new Uint8Array(COLS*ROWS); score=0; combo=0; bonusPopups=[]; return; }
+    const hitY0 = TB_Y+5, hitY1 = TB_Y+TB_H-5;
+    if (x > 40 && x < 104 && y > hitY0 && y < hitY1) { tool = 'sand'; return; }
+    if (x > 104 && x < 166 && y > hitY0 && y < hitY1) { tool = 'water'; return; }
+    if (x > 166 && x < 228 && y > hitY0 && y < hitY1) { tool = 'packed'; return; }
+    if (x > 228 && x < 290 && y > hitY0 && y < hitY1) { tool = 'shovel'; return; }
+    if (x > W-145 && x < W-40 && y > hitY0 && y < hitY1) { grid = new Uint8Array(COLS*ROWS); score=0; combo=0; bonusPopups=[]; return; }
     return;
   }
 
@@ -1828,14 +2000,31 @@ function pourAction(x, y) {
         color: `rgb(${220+Math.random()*20|0},${190+Math.random()*20|0},${80+Math.random()*20|0})`
       });
     }
-  } else {
-    // Water: spawn falling water drops at pour position — they fall like sand
+  } else if (tool === 'water') {
     addWaterAt(x, y, 6);
-    // Visual droplet particles
     for (let i = 0; i < 2; i++) {
       waterDrops.push({
         x: x+(Math.random()-0.5)*8, y: y+(Math.random()-0.5)*4,
         vy: 1+Math.random()*2, alpha: 0.7
+      });
+    }
+  } else if (tool === 'packed') {
+    addPackedSandAt(x, y, 5);
+    for (let i = 0; i < 2; i++) {
+      streamParticles.push({
+        x: x + (Math.random()-0.5)*8, y: y + (Math.random()-0.5)*4,
+        vy: 1+Math.random()*2, alpha: 0.8,
+        color: `rgb(${190+Math.random()*15|0},${180+Math.random()*15|0},${125+Math.random()*15|0})`
+      });
+    }
+  } else if (tool === 'shovel') {
+    digAt(x, y, 7);
+    // Sand debris particles flying up
+    for (let i = 0; i < 4; i++) {
+      streamParticles.push({
+        x: x+(Math.random()-0.5)*14, y: y,
+        vy: -2-Math.random()*3, alpha: 0.9,
+        color: `rgb(${200+Math.random()*30|0},${170+Math.random()*30|0},${80+Math.random()*30|0})`
       });
     }
   }
