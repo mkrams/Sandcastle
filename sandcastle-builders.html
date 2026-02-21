@@ -7,6 +7,8 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Matīss & Ernests — Miami Sandcastle Adventure</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0%25' stop-color='%230a0020'/%3E%3Cstop offset='50%25' stop-color='%23220840'/%3E%3Cstop offset='100%25' stop-color='%23ff4488'/%3E%3C/linearGradient%3E%3ClinearGradient id='txt' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0%25' stop-color='%23ff66bb'/%3E%3Cstop offset='30%25' stop-color='%23ffffff'/%3E%3Cstop offset='70%25' stop-color='%23ffffff'/%3E%3Cstop offset='100%25' stop-color='%2344ddff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='12' fill='url(%23bg)'/%3E%3Ctext x='32' y='45' text-anchor='middle' font-family='Impact,Arial Black,sans-serif' font-size='34' font-weight='bold' font-style='italic' fill='url(%23txt)' stroke='%23ff2288' stroke-width='1'%3EMK%3C/text%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Cdefs%3E%3ClinearGradient id='bg' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0%25' stop-color='%230a0020'/%3E%3Cstop offset='50%25' stop-color='%23220840'/%3E%3Cstop offset='100%25' stop-color='%23ff4488'/%3E%3C/linearGradient%3E%3ClinearGradient id='txt' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0%25' stop-color='%23ff66bb'/%3E%3Cstop offset='30%25' stop-color='%23ffffff'/%3E%3Cstop offset='70%25' stop-color='%23ffffff'/%3E%3Cstop offset='100%25' stop-color='%2344ddff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='180' height='180' rx='36' fill='url(%23bg)'/%3E%3Ctext x='90' y='125' text-anchor='middle' font-family='Impact,Arial Black,sans-serif' font-size='96' font-weight='bold' font-style='italic' fill='url(%23txt)' stroke='%23ff2288' stroke-width='2'%3EMK%3C/text%3E%3C/svg%3E">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Permanent+Marker&display=swap');
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -134,6 +136,32 @@ function pxToGrid(px,py) { return {c:Math.floor((px-GRID_X0)/CELL), r:Math.floor
 let tool = 'sand';
 let pouring = false;
 let pourPx = 0, pourPy = 0;
+
+// ============ SCORING ============
+let score = 0, combo = 0, comboTimer = 0, lastPourTime = 0;
+let bonusPopups = []; // {text, x, y, age, color}
+let yachtX = W + 200; // yacht starts offscreen right, moves left
+
+function addScore(pts, px, py) {
+  const now = Date.now();
+  if (now - lastPourTime < 300) {
+    combo++;
+  } else {
+    combo = 1;
+  }
+  lastPourTime = now;
+  let mult = 1;
+  let bonusText = '';
+  let bonusColor = '#ffaa44';
+  if (combo >= 100) { mult = 5; bonusText = 'UNSTOPPABLE x5'; bonusColor = '#ff22ff'; }
+  else if (combo >= 50) { mult = 4; bonusText = 'INSANE x4'; bonusColor = '#ff4444'; }
+  else if (combo >= 30) { mult = 3; bonusText = 'ON FIRE x3'; bonusColor = '#ff8800'; }
+  else if (combo >= 15) { mult = 2; bonusText = 'COMBO x2'; bonusColor = '#ffcc00'; }
+  score += pts * mult;
+  if (bonusText && combo % 10 === 0) {
+    bonusPopups.push({ text: bonusText, x: px, y: py - 30, age: 0, color: bonusColor });
+  }
+}
 
 // ============ PARTICLES ============
 let streamParticles = [];
@@ -383,22 +411,89 @@ function drawSky() {
   });
 }
 
+// ============ YACHT (animated) ============
+function drawYacht(yx, yy) {
+  const t = Date.now() * 0.001;
+  const bob = Math.sin(t * 1.2) * 2; // gentle bobbing
+  const ty = yy + bob;
+  ctx.save();
+  ctx.translate(yx, ty);
+
+  // Wake trail behind yacht
+  ctx.strokeStyle = 'rgba(200,230,255,0.15)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(-60, 8);
+  ctx.quadraticCurveTo(-35, 12, -15, 6);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-55, 10);
+  ctx.quadraticCurveTo(-30, 16, -10, 8);
+  ctx.stroke();
+
+  // Hull — sleek white with dark waterline
+  ctx.fillStyle = '#1a1a3a';
+  ctx.beginPath();
+  ctx.moveTo(-30, 4); ctx.lineTo(40, 2); ctx.lineTo(45, 6);
+  ctx.lineTo(-25, 8); ctx.closePath(); ctx.fill();
+  // White upper hull
+  ctx.fillStyle = '#eef0f5';
+  ctx.beginPath();
+  ctx.moveTo(-28, 0); ctx.lineTo(42, -2); ctx.lineTo(44, 4);
+  ctx.lineTo(40, 4); ctx.lineTo(-28, 4); ctx.closePath(); ctx.fill();
+  // Deck line
+  ctx.strokeStyle = 'rgba(0,0,0,0.2)'; ctx.lineWidth = 0.5;
+  ctx.beginPath(); ctx.moveTo(-26, 2); ctx.lineTo(40, 0); ctx.stroke();
+
+  // Cabin / superstructure
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(-8, -10, 28, 10);
+  // Windows — dark blue
+  ctx.fillStyle = '#224';
+  for (let i = 0; i < 5; i++) ctx.fillRect(-4 + i*5, -8, 3, 4);
+  // Upper deck
+  ctx.fillStyle = '#dde';
+  ctx.fillRect(-3, -15, 20, 5);
+  ctx.fillStyle = '#224';
+  for (let i = 0; i < 3; i++) ctx.fillRect(0 + i*6, -14, 4, 3);
+
+  // Radar mast
+  ctx.fillStyle = '#aab'; ctx.fillRect(8, -22, 1, 7);
+  ctx.fillStyle = '#ccd'; ctx.fillRect(5, -23, 7, 1.5);
+
+  // Bow accent — gold stripe
+  ctx.strokeStyle = '#cc9933'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(38, -1); ctx.lineTo(44, 3); ctx.stroke();
+
+  // Neon underglow (very subtle pink reflection on water)
+  ctx.fillStyle = 'rgba(255,50,150,0.08)';
+  ctx.beginPath();
+  ctx.ellipse(5, 10, 35, 4, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
 // ============ OCEAN WAVES (animated) ============
 let waveOff = 0;
 function drawOceanWaves() {
   waveOff += 0.025;
-  const colors = getSkyColors();
-  // Animated wave crests over the static bg
+  // Clip waves to only show between building clusters (not over buildings)
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(148, GROUND_Y - 30, 612, 40);
+  ctx.clip();
   for (let i = 0; i < 3; i++) {
     ctx.fillStyle = `rgba(255,255,255,${0.04 + i * 0.02})`;
     ctx.beginPath();
     const wy = GROUND_Y - 24 + i * 12;
-    for (let x = 0; x <= W; x += 3) {
+    for (let x = 140; x <= 770; x += 3) {
       const y = wy + Math.sin(x * 0.02 + waveOff + i * 1.8) * 3;
-      x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      x === 140 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     }
-    ctx.lineTo(W, GROUND_Y); ctx.lineTo(0, GROUND_Y); ctx.closePath(); ctx.fill();
+    ctx.lineTo(770, GROUND_Y); ctx.lineTo(140, GROUND_Y); ctx.closePath(); ctx.fill();
   }
+  ctx.restore();
 }
 
 // ============ SAND PHYSICS ============
@@ -514,14 +609,16 @@ function simulateSand() {
 function addSandAt(px, py, radius) {
   const {c:cc, r:rc} = pxToGrid(px, py);
   const rr = Math.ceil(radius / CELL);
+  let placed = 0;
   for (let dr = -rr; dr <= rr; dr++) {
     for (let dc = -rr; dc <= rr; dc++) {
       if (dc*dc+dr*dr <= rr*rr && Math.random() < 0.4) {
         const nc=cc+dc, nr=rc+dr;
-        if (cellAt(nc,nr)===0) setCell(nc,nr,1);
+        if (cellAt(nc,nr)===0) { setCell(nc,nr,1); placed++; }
       }
     }
   }
+  if (placed > 0) addScore(placed, px, py);
 }
 
 function addWaterAt(px, py, radius) {
@@ -779,7 +876,7 @@ function drawSandBucket(x, y) {
 }
 
 // ============ TOOLBAR ============
-const TB_Y = 520, TB_H = 110;
+const TB_Y = 540, TB_H = 80;
 
 function roundRect(x,y,w,h,r) {
   ctx.beginPath();
@@ -795,65 +892,96 @@ function roundRect(x,y,w,h,r) {
 }
 
 function drawToolbar() {
-  // GTA Vice-style toolbar - dark with neon accents
-  ctx.fillStyle = 'rgba(15,5,25,0.92)';
-  roundRect(20, TB_Y, W-40, TB_H, 14); ctx.fill();
-
-  // Neon border
-  ctx.strokeStyle = 'rgba(255,50,150,0.5)';
-  ctx.lineWidth = 2;
-  roundRect(20, TB_Y, W-40, TB_H, 14); ctx.stroke();
-  ctx.strokeStyle = 'rgba(50,200,255,0.3)';
-  ctx.lineWidth = 1;
-  roundRect(22, TB_Y+2, W-44, TB_H-4, 12); ctx.stroke();
-
-  // Sand tool
-  drawToolBtn(50, TB_Y+14, 100, 80, 'sand', tool==='sand', '#ff8844');
-  drawSandBucket(100, TB_Y+55);
-  ctx.fillStyle = '#eee'; ctx.font = 'bold 13px Bebas Neue, Impact, sans-serif'; ctx.textAlign = 'center';
-  ctx.letterSpacing = '2px';
-  ctx.fillText('POUR SAND', 100, TB_Y+90);
-
-  // Water tool
-  drawToolBtn(170, TB_Y+14, 100, 80, 'water', tool==='water', '#44ccff');
-  drawWateringCan(220, TB_Y+52, pouring && tool==='water' ? 0.35 : 0);
-  ctx.fillStyle = '#eee'; ctx.font = 'bold 13px Bebas Neue, Impact, sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText('WATER', 220, TB_Y+90);
-
-  // Clear button
-  ctx.fillStyle = 'rgba(255,50,50,0.15)';
-  roundRect(W-155, TB_Y+20, 110, 60, 10); ctx.fill();
-  ctx.strokeStyle = 'rgba(255,80,80,0.5)'; ctx.lineWidth = 1.5;
-  roundRect(W-155, TB_Y+20, 110, 60, 10); ctx.stroke();
-  ctx.fillStyle = '#ff6666'; ctx.font = 'bold 16px Bebas Neue, Impact, sans-serif'; ctx.textAlign = 'center';
-  ctx.fillText('🗑️ HARD RESET', W-100, TB_Y+57);
-
-  // Sand counter - neon style
-  const cnt = countSand();
-  ctx.fillStyle = '#ff3388';
-  ctx.font = 'bold 18px Bebas Neue, Impact, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText(`SAND: ${cnt.total}`, W/2, TB_Y+35);
-  ctx.fillStyle = '#44ddff';
-  ctx.fillText(`HARDENED: ${cnt.wet}`, W/2, TB_Y+60);
-  // Neon glow on text
-  ctx.shadowColor = '#ff3388'; ctx.shadowBlur = 8;
-  ctx.fillStyle = '#ff3388';
-  ctx.fillText(`SAND: ${cnt.total}`, W/2, TB_Y+35);
-  ctx.shadowColor = '#44ddff';
-  ctx.fillStyle = '#44ddff';
-  ctx.fillText(`HARDENED: ${cnt.wet}`, W/2, TB_Y+60);
+  // === SLIM TOOLBAR BACKDROP ===
+  const barX = 30, barW = W - 60;
+  ctx.fillStyle = 'rgba(8,3,18,0.88)';
+  roundRect(barX, TB_Y, barW, TB_H, 14); ctx.fill();
+  ctx.shadowColor = '#ff2288'; ctx.shadowBlur = 8;
+  ctx.strokeStyle = 'rgba(255,50,150,0.45)'; ctx.lineWidth = 1;
+  roundRect(barX, TB_Y, barW, TB_H, 14); ctx.stroke();
   ctx.shadowBlur = 0;
+
+  // Layout: icon buttons on left, reset on right
+  const btnSize = 56, btnY = TB_Y + (TB_H - btnSize) / 2;
+  const sandX = 50, waterX = 130;
+  const sandActive = tool === 'sand', waterActive = tool === 'water';
+
+  // === SAND BUTTON ===
+  drawIconBtn(sandX, btnY, btnSize, sandActive, '#ff8844');
+  // Sand bucket visual range: ~34w x 45h, centered at origin, bulk from y:-26 to y:2 → visual center ~y:-12
+  drawSandBucket(sandX + btnSize/2, btnY + btnSize/2 + 12);
+
+  // === WATER BUTTON ===
+  drawIconBtn(waterX, btnY, btnSize, waterActive, '#44ccff');
+  // Watering can visual range: ~68w x 50h, centered at origin, bulk from y:-14 to y:16 → visual center ~y:1
+  // But with handle it's y:-34 to y:16 → visual center ~y:-9. Scale down to fit.
+  ctx.save();
+  const wcx = waterX + btnSize/2, wcy = btnY + btnSize/2 + 4;
+  ctx.translate(wcx, wcy);
+  ctx.scale(0.75, 0.75);
+  ctx.translate(-wcx, -wcy);
+  drawWateringCan(wcx, wcy, pouring && waterActive ? 0.35 : 0);
+  ctx.restore();
+
+  // === HARD RESET BUTTON — with padding from edge ===
+  const resetW = 100, resetH = 40;
+  const rstX = W - resetW - 50, rstY = TB_Y + (TB_H - resetH) / 2;
+  ctx.fillStyle = 'rgba(60,10,15,0.5)';
+  roundRect(rstX, rstY, resetW, resetH, 10); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,60,60,0.4)'; ctx.lineWidth = 1;
+  roundRect(rstX, rstY, resetW, resetH, 10); ctx.stroke();
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 14px Bebas Neue, Impact, sans-serif';
+  ctx.fillStyle = '#ff5555';
+  ctx.fillText('HARD RESET', rstX + resetW/2, rstY + resetH/2 + 5);
+
+  // === SCORE DISPLAY — centered ===
+  const cnt = countSand();
+  const scoreX = W / 2;
+  ctx.textAlign = 'center';
+  // Main score
+  ctx.font = 'bold 28px Bebas Neue, Impact, sans-serif';
+  ctx.shadowColor = '#ff3388'; ctx.shadowBlur = 10;
+  const scoreGrad = ctx.createLinearGradient(scoreX-60, 0, scoreX+60, 0);
+  scoreGrad.addColorStop(0, '#ff4499'); scoreGrad.addColorStop(0.5, '#ffcc44'); scoreGrad.addColorStop(1, '#44ddff');
+  ctx.fillStyle = scoreGrad;
+  ctx.fillText(score.toLocaleString(), scoreX, TB_Y + 32);
+  ctx.shadowBlur = 0;
+  // Sand / Hardened counts smaller
+  ctx.font = 'bold 12px Bebas Neue, Impact, sans-serif';
+  ctx.fillStyle = 'rgba(255,170,80,0.6)';
+  ctx.fillText('SAND ' + cnt.total, scoreX - 50, TB_Y + 52);
+  ctx.fillStyle = 'rgba(80,200,255,0.6)';
+  ctx.fillText('HARD ' + cnt.wet, scoreX + 50, TB_Y + 52);
+  // Combo indicator
+  if (combo >= 15) {
+    const pulse = 0.7 + Math.sin(Date.now() * 0.008) * 0.3;
+    ctx.font = 'bold italic 16px Bebas Neue, Impact, sans-serif';
+    let comboLabel = 'COMBO x2';
+    let comboCol = '#ffcc00';
+    if (combo >= 100) { comboLabel = 'UNSTOPPABLE x5'; comboCol = '#ff22ff'; }
+    else if (combo >= 50) { comboLabel = 'INSANE x4'; comboCol = '#ff4444'; }
+    else if (combo >= 30) { comboLabel = 'ON FIRE x3'; comboCol = '#ff8800'; }
+    ctx.shadowColor = comboCol; ctx.shadowBlur = 12 * pulse;
+    ctx.fillStyle = comboCol;
+    ctx.fillText(comboLabel, scoreX, TB_Y + 70);
+    ctx.shadowBlur = 0;
+  }
 }
 
-function drawToolBtn(x,y,w,h,t,active,neonColor) {
-  ctx.fillStyle = active ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)';
-  roundRect(x,y,w,h,10); ctx.fill();
+function drawIconBtn(x, y, size, active, neonColor) {
   if (active) {
+    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+    roundRect(x, y, size, size, 12); ctx.fill();
     ctx.shadowColor = neonColor; ctx.shadowBlur = 12;
     ctx.strokeStyle = neonColor; ctx.lineWidth = 2;
-    roundRect(x,y,w,h,10); ctx.stroke();
+    roundRect(x, y, size, size, 12); ctx.stroke();
     ctx.shadowBlur = 0;
+  } else {
+    ctx.fillStyle = 'rgba(255,255,255,0.03)';
+    roundRect(x, y, size, size, 12); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = 1;
+    roundRect(x, y, size, size, 12); ctx.stroke();
   }
 }
 
@@ -1589,9 +1717,38 @@ function drawPlayScreen() {
     }
   });
 
+  // === ANIMATED YACHT crossing the ocean at horizon, right to left ===
+  yachtX -= 0.3; // drift left
+  if (yachtX < -250) yachtX = W + 200;
+  // CLIP yacht to only show in the ocean gap between building clusters (x:147 to x:760)
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(147, GROUND_Y - 60, 613, 70);
+  ctx.clip();
+  drawYacht(yachtX, GROUND_Y - 26);
+  ctx.restore();
+
   drawOceanWaves();
   drawGrid();
   drawParticles();
+
+  // Bonus popups
+  for (let i = bonusPopups.length - 1; i >= 0; i--) {
+    const p = bonusPopups[i];
+    p.age += 0.016;
+    p.y -= 1.2;
+    const alpha = Math.max(0, 1 - p.age / 1.5);
+    if (alpha <= 0) { bonusPopups.splice(i, 1); continue; }
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.font = 'bold italic 22px Bebas Neue, Impact, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = p.color; ctx.shadowBlur = 14;
+    ctx.fillStyle = p.color;
+    ctx.fillText(p.text, p.x, p.y);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
 
   // Tool cursor
   if (pouring) {
@@ -1630,15 +1787,16 @@ function onDown(e) {
     screen = 'play';
     gameStartTime = Date.now();
     grid = new Uint8Array(COLS * ROWS);
+    score = 0; combo = 0; bonusPopups = []; yachtX = W + 200;
     renderBackground();
     return;
   }
 
   // Toolbar
   if (y > TB_Y) {
-    if (x > 50 && x < 150 && y > TB_Y+14 && y < TB_Y+94) { tool = 'sand'; return; }
-    if (x > 170 && x < 270 && y > TB_Y+14 && y < TB_Y+94) { tool = 'water'; return; }
-    if (x > W-155 && x < W-45 && y > TB_Y+20 && y < TB_Y+80) { grid = new Uint8Array(COLS*ROWS); return; }
+    if (x > 40 && x < 120 && y > TB_Y+5 && y < TB_Y+TB_H-5) { tool = 'sand'; return; }
+    if (x > 120 && x < 200 && y > TB_Y+5 && y < TB_Y+TB_H-5) { tool = 'water'; return; }
+    if (x > W-150 && x < W-50 && y > TB_Y+5 && y < TB_Y+TB_H-5) { grid = new Uint8Array(COLS*ROWS); score=0; combo=0; bonusPopups=[]; return; }
     return;
   }
 
