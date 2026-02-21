@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Matīss & Ernests — Miami Sandcastle Adventure</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Permanent+Marker&display=swap');
@@ -11,10 +14,15 @@ body {
   background: #0a0a0a;
   display: flex; justify-content: center; align-items: center;
   min-height: 100vh;
+  min-height: 100dvh;
+  height: 100dvh;
   font-family: 'Bebas Neue', 'Impact', sans-serif;
   overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
 }
 canvas { display: block; touch-action: none; }
 </style>
@@ -27,12 +35,17 @@ const ctx = canvas.getContext('2d');
 const W = 960, H = 640;
 canvas.width = W; canvas.height = H;
 function resize() {
-  const r = Math.min(window.innerWidth / W, window.innerHeight / H);
+  const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+  const vw = window.visualViewport ? window.visualViewport.width : window.innerWidth;
+  const r = Math.min(vw / W, vh / H);
   canvas.style.width = (W * r) + 'px';
   canvas.style.height = (H * r) + 'px';
 }
 resize();
 window.addEventListener('resize', resize);
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', resize);
+}
 
 // ============ GAME STATE ============
 let screen = 'title'; // 'title' | 'play'
@@ -401,35 +414,56 @@ function simulateSand() {
       if (v === 0 || v === 2) continue;
 
       if (v === 3) {
-        // FALLING WATER — falls through air, soaks into dry sand
+        // FALLING WATER — falls through air, soaks deep into sand
         const below = cellAt(c, r+1);
         if (below === 0) {
           // Fall through air
           setCell(c, r+1, 3); setCell(c, r, 0);
         } else if (below === 1) {
-          // Hit dry sand → soak it! Water disappears, sand becomes wet
+          // Hit dry sand → soak it, and try to soak a column below too
           setCell(c, r+1, 2); setCell(c, r, 0);
+          // Penetrate deeper: soak dry sand cells below in a column
+          for (let depth = 2; depth <= 12; depth++) {
+            const deep = cellAt(c, r+depth);
+            if (deep === 1) { setCell(c, r+depth, 2); }
+            else if (deep === 2) { continue; } // skip wet, keep going
+            else { break; } // hit air or boundary, stop
+          }
         } else if (below === 2) {
-          // Already wet sand below — try to spread sideways through sand to find dry sand
-          const dir = Math.random() < 0.5 ? -1 : 1;
-          const sideA = cellAt(c+dir, r+1);
-          const sideB = cellAt(c-dir, r+1);
-          if (sideA === 1) { setCell(c+dir, r+1, 2); setCell(c, r, 0); }
-          else if (sideB === 1) { setCell(c-dir, r+1, 2); setCell(c, r, 0); }
-          else if (sideA === 0) { setCell(c+dir, r+1, 3); setCell(c, r, 0); }
-          else if (sideB === 0) { setCell(c-dir, r+1, 3); setCell(c, r, 0); }
-          else {
-            // Fully saturated area — water just evaporates
+          // Wet sand below — penetrate through wet sand to find dry sand deeper
+          let soaked = false;
+          for (let depth = 2; depth <= 16; depth++) {
+            const deep = cellAt(c, r+depth);
+            if (deep === 1) {
+              // Found dry sand underneath — soak it and a few neighbors
+              setCell(c, r+depth, 2);
+              // Also soak nearby dry sand at this depth
+              if (cellAt(c-1, r+depth) === 1) setCell(c-1, r+depth, 2);
+              if (cellAt(c+1, r+depth) === 1) setCell(c+1, r+depth, 2);
+              soaked = true; break;
+            } else if (deep === 2) { continue; } // keep going through wet
+            else { break; } // hit air or boundary
+          }
+          if (soaked) {
             setCell(c, r, 0);
+          } else {
+            // Try spreading sideways to find dry sand
+            const dir = Math.random() < 0.5 ? -1 : 1;
+            const sideA = cellAt(c+dir, r+1);
+            const sideB = cellAt(c-dir, r+1);
+            if (sideA === 1) { setCell(c+dir, r+1, 2); setCell(c, r, 0); }
+            else if (sideB === 1) { setCell(c-dir, r+1, 2); setCell(c, r, 0); }
+            else if (sideA === 0) { setCell(c+dir, r+1, 3); setCell(c, r, 0); }
+            else if (sideB === 0) { setCell(c-dir, r+1, 3); setCell(c, r, 0); }
+            else { setCell(c, r, 0); } // fully saturated, evaporate
           }
         } else if (below === 3) {
           // Water on water — spread sideways
           const dir = Math.random() < 0.5 ? -1 : 1;
           if (cellAt(c+dir, r) === 0) { setCell(c+dir, r, 3); setCell(c, r, 0); }
           else if (cellAt(c-dir, r) === 0) { setCell(c-dir, r, 3); setCell(c, r, 0); }
-          else { setCell(c, r, 0); } // evaporate if stuck
+          else { setCell(c, r, 0); }
         } else if (below === -1) {
-          // Hit bottom of grid — disappear
           setCell(c, r, 0);
         }
         continue;
@@ -1154,91 +1188,164 @@ function drawTitleScreen() {
   ctx.fillRect(2, -5, 4, 5);
   ctx.restore();
 
-  // === LAMBORGHINI foreground left ===
-  const carX = 50, carY = H - 52;
-  ctx.save(); ctx.translate(carX, carY);
-  ctx.fillStyle = '#050012';
-  ctx.beginPath();
-  ctx.moveTo(0,0); ctx.lineTo(5,-13); ctx.lineTo(28,-17); ctx.lineTo(50,-20);
-  ctx.lineTo(92,-20); ctx.lineTo(112,-15); ctx.lineTo(125,-12);
-  ctx.lineTo(130,-6); ctx.lineTo(130,0); ctx.lineTo(0,0);
-  ctx.closePath(); ctx.fill();
-  ctx.fillStyle = 'rgba(100,150,200,0.12)';
-  ctx.beginPath(); ctx.moveTo(50,-20); ctx.lineTo(60,-18); ctx.lineTo(88,-18); ctx.lineTo(92,-20); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = '#020008';
-  ctx.beginPath(); ctx.arc(28, 0, 7, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(105, 0, 7, 0, Math.PI*2); ctx.fill();
-  ctx.strokeStyle = 'rgba(200,200,200,0.3)'; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.arc(28, 0, 4.5, 0, Math.PI*2); ctx.stroke();
-  ctx.beginPath(); ctx.arc(105, 0, 4.5, 0, Math.PI*2); ctx.stroke();
-  ctx.shadowColor = '#ffcc44'; ctx.shadowBlur = 14;
-  ctx.fillStyle = `rgba(255,220,80,${0.4+Math.sin(t*2)*0.2})`;
-  ctx.beginPath(); ctx.ellipse(128, -4, 3.5, 2, 0, 0, Math.PI*2); ctx.fill();
-  ctx.shadowColor = '#ff0033'; ctx.shadowBlur = 10;
-  ctx.fillStyle = `rgba(255,0,50,${0.5+Math.sin(t*2.5)*0.3})`;
-  ctx.fillRect(1, -7, 4, 3); ctx.fillRect(1, -3, 4, 3);
-  ctx.shadowColor = '#ff2288'; ctx.shadowBlur = 18;
-  ctx.fillStyle = `rgba(255,34,136,${0.14+Math.sin(t*1.8)*0.08})`;
-  ctx.fillRect(8, 2, 112, 3);
-  ctx.shadowBlur = 0;
-  ctx.restore();
+  // === PALM-LINED BOULEVARD AT BOTTOM ===
+  const streetY = H - 105; // road surface top
+  const curbY = streetY - 8;
 
-  // === FERRARI foreground right ===
-  const car2X = W - 175, car2Y = H - 48;
-  ctx.save(); ctx.translate(car2X, car2Y);
-  ctx.fillStyle = '#050012';
-  ctx.beginPath();
-  ctx.moveTo(0,0); ctx.lineTo(4,-9); ctx.lineTo(14,-15); ctx.lineTo(40,-18);
-  ctx.lineTo(82,-18); ctx.lineTo(100,-12); ctx.lineTo(118,-9);
-  ctx.lineTo(122,-3); ctx.lineTo(122,0); ctx.lineTo(0,0);
-  ctx.closePath(); ctx.fill();
-  ctx.fillStyle = 'rgba(100,150,200,0.1)';
-  ctx.beginPath(); ctx.moveTo(40,-18); ctx.lineTo(50,-16); ctx.lineTo(78,-16); ctx.lineTo(82,-18); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = '#020008';
-  ctx.beginPath(); ctx.arc(25, 0, 6.5, 0, Math.PI*2); ctx.fill();
-  ctx.beginPath(); ctx.arc(100, 0, 6.5, 0, Math.PI*2); ctx.fill();
-  ctx.strokeStyle = 'rgba(200,200,200,0.3)'; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.arc(25, 0, 4, 0, Math.PI*2); ctx.stroke();
-  ctx.beginPath(); ctx.arc(100, 0, 4, 0, Math.PI*2); ctx.stroke();
-  ctx.shadowColor = '#ffdd55'; ctx.shadowBlur = 10;
-  ctx.fillStyle = `rgba(255,230,100,${0.4+Math.sin(t*2.2)*0.2})`;
-  ctx.beginPath(); ctx.ellipse(120, -2, 3, 1.8, 0, 0, Math.PI*2); ctx.fill();
-  ctx.shadowColor = '#ff0033'; ctx.shadowBlur = 8;
-  ctx.fillStyle = `rgba(255,0,50,${0.5+Math.sin(t*2.8)*0.3})`;
-  ctx.fillRect(1, -5, 3, 2.5); ctx.fillRect(1, -1.5, 3, 2.5);
-  ctx.shadowColor = '#00ffcc'; ctx.shadowBlur = 16;
-  ctx.fillStyle = `rgba(0,255,200,${0.1+Math.sin(t*2)*0.07})`;
-  ctx.fillRect(8, 2, 104, 3);
-  ctx.shadowBlur = 0;
-  ctx.restore();
+  // Sidewalk
+  const swG = ctx.createLinearGradient(0, curbY - 20, 0, streetY);
+  swG.addColorStop(0, '#1a0e28'); swG.addColorStop(1, '#120820');
+  ctx.fillStyle = swG;
+  ctx.fillRect(0, curbY - 20, W, 28);
 
-  // === PALM SILHOUETTES ===
-  function titlePalm(px, h, lean) {
-    ctx.save(); ctx.translate(px, waterTop + 10);
-    ctx.fillStyle = '#030010';
+  // Curb — neon-lit edge
+  ctx.shadowColor = '#ff2288'; ctx.shadowBlur = 6;
+  ctx.fillStyle = '#221535';
+  ctx.fillRect(0, curbY, W, 4);
+  ctx.fillStyle = `rgba(255,50,150,${0.3+Math.sin(t*1.5)*0.15})`;
+  ctx.fillRect(0, curbY, W, 1.5);
+  ctx.shadowBlur = 0;
+
+  // Road surface
+  const roadG = ctx.createLinearGradient(0, streetY, 0, H);
+  roadG.addColorStop(0, '#0a0618'); roadG.addColorStop(0.4, '#080414'); roadG.addColorStop(1, '#050210');
+  ctx.fillStyle = roadG;
+  ctx.fillRect(0, streetY, W, H - streetY);
+
+  // Road lane markings — dashed center line
+  ctx.fillStyle = `rgba(255,220,100,${0.3+Math.sin(t)*0.1})`;
+  const laneY = streetY + 38;
+  for (let dx = 0; dx < W; dx += 50) {
+    ctx.fillRect(dx + 5, laneY, 25, 2);
+  }
+
+  // Wet road reflections — streaks of neon color
+  for (let ri = 0; ri < 15; ri++) {
+    const rx = (ri * 73 + 20) % W;
+    const rw = 30 + (ri * 17) % 40;
+    const col = ri % 3 === 0 ? 'rgba(255,50,150,' : ri % 3 === 1 ? 'rgba(50,200,255,' : 'rgba(255,200,50,';
+    ctx.fillStyle = col + (0.04 + Math.sin(t*1.5 + ri) * 0.02) + ')';
+    ctx.fillRect(rx, streetY + 8 + (ri%5)*12, rw, 20);
+  }
+
+  // === BOULEVARD PALM TREES (lining the sidewalk) ===
+  function streetPalm(px) {
+    const baseY = curbY - 18;
+    ctx.save(); ctx.translate(px, baseY);
+    ctx.fillStyle = '#0a0420';
+    // Trunk — tall and slim
+    const lean = Math.sin(px * 0.01) * 8;
     ctx.beginPath();
-    ctx.moveTo(-5, 0); ctx.quadraticCurveTo(lean*0.4 - 3, -h*0.5, lean-5, -h);
-    ctx.lineTo(lean+5, -h);
-    ctx.quadraticCurveTo(lean*0.4+3, -h*0.5, 5, 0);
+    ctx.moveTo(-3, 0); ctx.quadraticCurveTo(lean*0.3-2, -80, lean-3, -155);
+    ctx.lineTo(lean+3, -155);
+    ctx.quadraticCurveTo(lean*0.3+2, -80, 3, 0);
     ctx.closePath(); ctx.fill();
-    const topX=lean, topY=-h;
-    [-2.5,-1.8,-1.1,-0.4,0.3,1.0,1.7,2.4].forEach(a => {
-      const len = 60;
-      ctx.beginPath(); ctx.moveTo(topX,topY);
-      const ex=topX+Math.cos(a)*len, ey=topY+Math.sin(a)*len+Math.abs(Math.sin(a))*20;
-      ctx.quadraticCurveTo(topX+Math.cos(a)*28, topY+Math.sin(a)*14, ex, ey);
-      ctx.lineWidth = 5; ctx.strokeStyle = '#030010'; ctx.stroke();
-      for (let lt = 0.2; lt < 0.9; lt += 0.09) {
-        const lx = topX + (topX+Math.cos(a)*28 - topX)*2*lt*(1-lt) + (ex-topX)*lt*lt;
-        const ly = topY + (topY+Math.sin(a)*14 - topY)*2*lt*(1-lt) + (ey-topY)*lt*lt;
-        ctx.beginPath(); ctx.ellipse(lx, ly, 3, 9, a+0.3, 0, Math.PI*2); ctx.fill();
+
+    // Fronds
+    const topX = lean, topY = -155;
+    [-2.8,-2.0,-1.2,-0.4,0.4,1.2,2.0,2.8].forEach(a => {
+      const len = 50;
+      const ex = topX + Math.cos(a)*len, ey = topY + Math.sin(a)*len + Math.abs(Math.sin(a))*18;
+      ctx.beginPath(); ctx.moveTo(topX, topY);
+      ctx.quadraticCurveTo(topX+Math.cos(a)*24, topY+Math.sin(a)*12, ex, ey);
+      ctx.lineWidth = 4; ctx.strokeStyle = '#0a0420'; ctx.stroke();
+      for (let lt = 0.25; lt < 0.9; lt += 0.1) {
+        const lx = topX + (topX+Math.cos(a)*24-topX)*2*lt*(1-lt) + (ex-topX)*lt*lt;
+        const ly = topY + (topY+Math.sin(a)*12-topY)*2*lt*(1-lt) + (ey-topY)*lt*lt;
+        ctx.fillStyle = '#0a0420';
+        ctx.beginPath(); ctx.ellipse(lx, ly, 2.5, 8, a+0.3, 0, Math.PI*2); ctx.fill();
       }
     });
+    // Coconuts
+    ctx.fillStyle = '#0a0420';
+    ctx.beginPath(); ctx.arc(topX-3, topY+5, 3, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(topX+4, topY+4, 3, 0, Math.PI*2); ctx.fill();
     ctx.restore();
   }
-  titlePalm(15, 290, 30);
-  titlePalm(W-25, 310, -28);
-  titlePalm(W-120, 220, 20);
+  // Evenly spaced palm trees along the boulevard
+  [60, 180, 310, 440, 570, 700, 830, 940].forEach(px => streetPalm(px));
+
+  // === FANCY CAR — Lamborghini on the road (left side, driving right) ===
+  const carY = streetY + 18;
+  ctx.save(); ctx.translate(180, carY);
+  ctx.fillStyle = '#050012';
+  ctx.beginPath();
+  ctx.moveTo(0,0); ctx.lineTo(6,-14); ctx.lineTo(32,-18); ctx.lineTo(58,-22);
+  ctx.lineTo(105,-22); ctx.lineTo(128,-16); ctx.lineTo(142,-13);
+  ctx.lineTo(148,-6); ctx.lineTo(148,0); ctx.lineTo(0,0);
+  ctx.closePath(); ctx.fill();
+  // Windshield
+  ctx.fillStyle = 'rgba(100,160,220,0.12)';
+  ctx.beginPath(); ctx.moveTo(58,-22); ctx.lineTo(70,-19); ctx.lineTo(100,-19); ctx.lineTo(105,-22); ctx.closePath(); ctx.fill();
+  // Wheels
+  ctx.fillStyle = '#020008';
+  ctx.beginPath(); ctx.arc(32, 0, 8, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(122, 0, 8, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = 'rgba(200,200,200,0.3)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(32, 0, 5, 0, Math.PI*2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(122, 0, 5, 0, Math.PI*2); ctx.stroke();
+  // Headlights
+  ctx.shadowColor = '#ffcc44'; ctx.shadowBlur = 16;
+  ctx.fillStyle = `rgba(255,220,80,${0.5+Math.sin(t*2)*0.25})`;
+  ctx.beginPath(); ctx.ellipse(146, -4, 4, 2.5, 0, 0, Math.PI*2); ctx.fill();
+  // Taillights
+  ctx.shadowColor = '#ff0033'; ctx.shadowBlur = 12;
+  ctx.fillStyle = `rgba(255,0,50,${0.5+Math.sin(t*2.5)*0.3})`;
+  ctx.fillRect(1, -8, 5, 3); ctx.fillRect(1, -3.5, 5, 3);
+  // Neon underglow — pink
+  ctx.shadowColor = '#ff2288'; ctx.shadowBlur = 22;
+  ctx.fillStyle = `rgba(255,34,136,${0.18+Math.sin(t*1.8)*0.1})`;
+  ctx.fillRect(10, 3, 128, 4);
+  ctx.shadowBlur = 0;
+  ctx.restore();
+
+  // === FANCY CAR — Ferrari on the road (right side, driving left) ===
+  ctx.save(); ctx.translate(W - 170, carY + 30);
+  ctx.scale(-1, 1); // mirror it (facing left)
+  ctx.fillStyle = '#050012';
+  ctx.beginPath();
+  ctx.moveTo(0,0); ctx.lineTo(5,-10); ctx.lineTo(18,-16); ctx.lineTo(48,-19);
+  ctx.lineTo(90,-19); ctx.lineTo(112,-13); ctx.lineTo(128,-9);
+  ctx.lineTo(132,-3); ctx.lineTo(132,0); ctx.lineTo(0,0);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(100,160,220,0.1)';
+  ctx.beginPath(); ctx.moveTo(48,-19); ctx.lineTo(58,-17); ctx.lineTo(86,-17); ctx.lineTo(90,-19); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#020008';
+  ctx.beginPath(); ctx.arc(28, 0, 7, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(108, 0, 7, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = 'rgba(200,200,200,0.3)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(28, 0, 4.5, 0, Math.PI*2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(108, 0, 4.5, 0, Math.PI*2); ctx.stroke();
+  ctx.shadowColor = '#ffdd55'; ctx.shadowBlur = 14;
+  ctx.fillStyle = `rgba(255,230,100,${0.5+Math.sin(t*2.2)*0.25})`;
+  ctx.beginPath(); ctx.ellipse(130, -2, 3.5, 2, 0, 0, Math.PI*2); ctx.fill();
+  ctx.shadowColor = '#ff0033'; ctx.shadowBlur = 10;
+  ctx.fillStyle = `rgba(255,0,50,${0.5+Math.sin(t*2.8)*0.3})`;
+  ctx.fillRect(1, -5, 4, 2.5); ctx.fillRect(1, -1.5, 4, 2.5);
+  // Cyan underglow
+  ctx.shadowColor = '#00ffcc'; ctx.shadowBlur = 20;
+  ctx.fillStyle = `rgba(0,255,200,${0.14+Math.sin(t*2)*0.08})`;
+  ctx.fillRect(8, 3, 114, 4);
+  ctx.shadowBlur = 0;
+  ctx.restore();
+
+  // === THIRD CAR — parked on the far left ===
+  ctx.save(); ctx.translate(20, carY + 4);
+  ctx.fillStyle = '#040010';
+  ctx.beginPath();
+  ctx.moveTo(0,0); ctx.lineTo(3,-8); ctx.lineTo(12,-12); ctx.lineTo(30,-14);
+  ctx.lineTo(60,-14); ctx.lineTo(72,-10); ctx.lineTo(80,-6);
+  ctx.lineTo(82,0); ctx.lineTo(0,0);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#020008';
+  ctx.beginPath(); ctx.arc(18, 0, 5, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(66, 0, 5, 0, Math.PI*2); ctx.fill();
+  // Parked — just taillights glowing softly
+  ctx.shadowColor = '#ff0033'; ctx.shadowBlur = 6;
+  ctx.fillStyle = 'rgba(255,0,50,0.3)';
+  ctx.fillRect(1, -4, 3, 2); ctx.fillRect(1, -1, 3, 2);
+  ctx.shadowBlur = 0;
+  ctx.restore();
 
   // === NEON FLOATING PARTICLES ===
   neonParticles.forEach(p => {
@@ -1258,37 +1365,61 @@ function drawTitleScreen() {
   ctx.save();
   ctx.textAlign = 'center';
 
-  // "MATĪSS & ERNESTS" — top credit
-  const titleY = 58 + Math.sin(t * 0.6) * 4;
-  for (let g = 2; g >= 0; g--) {
-    ctx.shadowColor = '#ff2288';
-    ctx.shadowBlur = 10 + g * 15;
-    ctx.fillStyle = g === 0 ? '#ff2288' : `rgba(255,34,136,${0.12-g*0.03})`;
-    ctx.font = `bold ${38+g*2}px Bebas Neue, Impact, sans-serif`;
+  // "MATĪSS & ERNESTS" — big badass top title
+  const titleY = 70 + Math.sin(t * 0.6) * 4;
+  // 4-layer neon glow
+  for (let g = 4; g >= 0; g--) {
+    ctx.shadowColor = g % 2 === 0 ? '#ff2288' : '#ff6600';
+    ctx.shadowBlur = 15 + g * 22;
+    ctx.fillStyle = g === 0 ? '#ff2288' : `rgba(255,${60+g*30},${100+g*20},${0.14-g*0.025})`;
+    ctx.font = `bold ${72+g*2}px Bebas Neue, Impact, sans-serif`;
     ctx.fillText('MATĪSS & ERNESTS', W/2, titleY);
   }
   ctx.shadowBlur = 0;
-  const titleGrad = ctx.createLinearGradient(0, titleY - 32, 0, titleY + 6);
-  titleGrad.addColorStop(0, '#ff66bb'); titleGrad.addColorStop(0.3, '#ffddee');
-  titleGrad.addColorStop(0.5, '#ffffff'); titleGrad.addColorStop(0.8, '#aaddff');
-  titleGrad.addColorStop(1, '#66bbff');
+  // Chrome-gold gradient fill
+  const titleGrad = ctx.createLinearGradient(0, titleY - 60, 0, titleY + 10);
+  titleGrad.addColorStop(0, '#ff3388');
+  titleGrad.addColorStop(0.15, '#ffaa55');
+  titleGrad.addColorStop(0.3, '#ffee88');
+  titleGrad.addColorStop(0.45, '#ffffff');
+  titleGrad.addColorStop(0.55, '#ffffff');
+  titleGrad.addColorStop(0.7, '#aaddff');
+  titleGrad.addColorStop(0.85, '#66bbff');
+  titleGrad.addColorStop(1, '#ff66bb');
   ctx.fillStyle = titleGrad;
-  ctx.font = 'bold 38px Bebas Neue, Impact, sans-serif';
+  ctx.font = 'bold 72px Bebas Neue, Impact, sans-serif';
   ctx.fillText('MATĪSS & ERNESTS', W/2, titleY);
-  ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 1;
+  // Chrome outline
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1.5;
   ctx.strokeText('MATĪSS & ERNESTS', W/2, titleY);
 
-  // "presents"
-  const presY = titleY + 28;
-  ctx.shadowColor = '#ffaa66'; ctx.shadowBlur = 8;
-  ctx.fillStyle = 'rgba(255,220,180,' + (0.7 + Math.sin(t*1.5)*0.2) + ')';
-  ctx.font = 'italic 20px Bebas Neue, Impact, sans-serif';
-  ctx.fillText('presents', W/2, presY);
+  // "PRESENTS" — bold neon, not shy anymore
+  const presY = titleY + 42;
+  // Glow layers
+  for (let g = 2; g >= 0; g--) {
+    ctx.shadowColor = '#ffaa00';
+    ctx.shadowBlur = 10 + g * 14;
+    ctx.fillStyle = g === 0 ? '#ffcc44' : `rgba(255,200,50,${0.12-g*0.03})`;
+    ctx.font = `italic bold ${34+g*2}px Bebas Neue, Impact, sans-serif`;
+    ctx.fillText('PRESENTS', W/2, presY);
+  }
   ctx.shadowBlur = 0;
+  // Gold gradient
+  const presGrad = ctx.createLinearGradient(0, presY - 28, 0, presY + 6);
+  presGrad.addColorStop(0, '#ffcc44');
+  presGrad.addColorStop(0.3, '#ffeeaa');
+  presGrad.addColorStop(0.5, '#ffffff');
+  presGrad.addColorStop(0.7, '#ffeeaa');
+  presGrad.addColorStop(1, '#ffaa33');
+  ctx.fillStyle = presGrad;
+  ctx.font = 'italic bold 34px Bebas Neue, Impact, sans-serif';
+  ctx.fillText('PRESENTS', W/2, presY);
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 0.8;
+  ctx.strokeText('PRESENTS', W/2, presY);
 
   // === "MIAMI SANDCASTLE ADVENTURE" — THE BIGGEST TEXT ===
-  // "MIAMI" on first line — absolutely massive
-  const miamiY = presY + 95;
+  // "MIAMI" — massive
+  const miamiY = presY + 155;
   for (let g = 5; g >= 0; g--) {
     ctx.shadowColor = g % 2 === 0 ? '#ff2288' : '#ffaa00';
     ctx.shadowBlur = 20 + g * 25;
@@ -1311,6 +1442,7 @@ function drawTitleScreen() {
   ctx.fillText('MIAMI', W/2, miamiY);
   ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 2;
   ctx.strokeText('MIAMI', W/2, miamiY);
+  ctx.shadowBlur = 0;
 
   // "SANDCASTLE ADVENTURE" — second line, large but smaller than MIAMI
   const saY = miamiY + 62;
@@ -1477,21 +1609,21 @@ function onUp() { pouring = false; }
 
 function pourAction(x, y) {
   if (tool === 'sand') {
-    addSandAt(x, y, 10);
-    for (let i = 0; i < 3; i++) {
+    addSandAt(x, y, 5);
+    for (let i = 0; i < 2; i++) {
       streamParticles.push({
-        x: x + (Math.random()-0.5)*14, y: y + (Math.random()-0.5)*6,
+        x: x + (Math.random()-0.5)*8, y: y + (Math.random()-0.5)*4,
         vy: 1+Math.random()*2, alpha: 0.8,
         color: `rgb(${220+Math.random()*20|0},${190+Math.random()*20|0},${80+Math.random()*20|0})`
       });
     }
   } else {
     // Water: spawn falling water drops at pour position — they fall like sand
-    addWaterAt(x, y, 12);
+    addWaterAt(x, y, 6);
     // Visual droplet particles
     for (let i = 0; i < 2; i++) {
       waterDrops.push({
-        x: x+(Math.random()-0.5)*16, y: y+(Math.random()-0.5)*6,
+        x: x+(Math.random()-0.5)*8, y: y+(Math.random()-0.5)*4,
         vy: 1+Math.random()*2, alpha: 0.7
       });
     }
