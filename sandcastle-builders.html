@@ -925,50 +925,54 @@ function drawSandBucket(x, y) {
 }
 
 function drawPackedSandIcon(x, y) {
+  // Clay blob — organic, squishy, lumpy shape
   const t = Date.now() * 0.003;
   ctx.save(); ctx.translate(x, y);
 
-  // Neon glow
+  // Soft neon glow
   ctx.shadowColor = '#44ff88'; ctx.shadowBlur = 14;
 
-  // Castle tower shape — flat-topped trapezoid
-  const towerG = ctx.createLinearGradient(-14, -22, 14, 4);
-  towerG.addColorStop(0, '#88aa55');
-  towerG.addColorStop(0.3, '#bbdd88');
-  towerG.addColorStop(0.5, '#ddeebb');
-  towerG.addColorStop(0.7, '#bbdd88');
-  towerG.addColorStop(1, '#667744');
-  ctx.fillStyle = towerG;
+  // Main clay blob — rounded organic shape
+  const clayG = ctx.createRadialGradient(-3, -6, 2, 0, -2, 20);
+  clayG.addColorStop(0, '#ddc888');
+  clayG.addColorStop(0.4, '#c4a868');
+  clayG.addColorStop(0.8, '#a08848');
+  clayG.addColorStop(1, '#806830');
+  ctx.fillStyle = clayG;
   ctx.beginPath();
-  ctx.moveTo(-14, 4); ctx.lineTo(-12, -18); ctx.lineTo(12, -18); ctx.lineTo(14, 4);
+  ctx.moveTo(-16, 6);
+  ctx.quadraticCurveTo(-18, -4, -12, -12);
+  ctx.quadraticCurveTo(-6, -20, 2, -18);
+  ctx.quadraticCurveTo(10, -16, 14, -10);
+  ctx.quadraticCurveTo(18, -2, 16, 6);
+  ctx.quadraticCurveTo(10, 10, 0, 10);
+  ctx.quadraticCurveTo(-10, 10, -16, 6);
   ctx.closePath(); ctx.fill();
   ctx.shadowBlur = 0;
 
-  // Battlements on top
-  ctx.fillStyle = '#bbdd88';
-  for (let i = -2; i <= 2; i++) {
-    ctx.fillRect(-12 + i * 6, -24, 4, 6);
-  }
+  // Wet sheen highlight
+  ctx.fillStyle = 'rgba(255,255,220,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(-4, -12, 8, 4, -0.3, 0, Math.PI * 2);
+  ctx.fill();
 
-  // Neon accent stripes
-  ctx.fillStyle = 'rgba(0,255,100,' + (0.4 + Math.sin(t*1.1)*0.2) + ')';
-  ctx.fillRect(-12, -12, 24, 2);
-  ctx.fillRect(-13, -4, 26, 2);
+  // Secondary highlight
+  ctx.fillStyle = 'rgba(255,255,200,0.15)';
+  ctx.beginPath();
+  ctx.ellipse(6, -6, 5, 3, 0.2, 0, Math.PI * 2);
+  ctx.fill();
 
-  // Brick pattern
-  ctx.strokeStyle = 'rgba(80,100,40,0.4)'; ctx.lineWidth = 0.5;
-  for (let row = 0; row < 3; row++) {
-    const ry = -16 + row * 7;
-    ctx.beginPath(); ctx.moveTo(-13, ry); ctx.lineTo(13, ry); ctx.stroke();
-    const off = row % 2 === 0 ? 0 : 4;
-    for (let b = -12 + off; b < 12; b += 8) {
-      ctx.beginPath(); ctx.moveTo(b, ry); ctx.lineTo(b, ry + 7); ctx.stroke();
-    }
-  }
+  // Neon wet accent shimmer
+  ctx.fillStyle = 'rgba(100,255,150,' + (0.15 + Math.sin(t * 1.2) * 0.1) + ')';
+  ctx.beginPath();
+  ctx.ellipse(0, -4, 12, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
 
-  // Door/window
-  ctx.fillStyle = 'rgba(40,60,30,0.5)';
-  ctx.beginPath(); ctx.arc(0, -6, 3, Math.PI, 0); ctx.lineTo(3, 2); ctx.lineTo(-3, 2); ctx.closePath(); ctx.fill();
+  // Surface texture — small dimples
+  ctx.fillStyle = 'rgba(80,60,30,0.2)';
+  ctx.beginPath(); ctx.arc(-6, -4, 2, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(4, -8, 1.5, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(8, 0, 1.8, 0, Math.PI*2); ctx.fill();
 
   ctx.restore();
 }
@@ -977,44 +981,75 @@ function drawShovelIcon(x, y) {
   const t = Date.now() * 0.003;
   ctx.save(); ctx.translate(x, y);
 
-  // Handle — wooden stick
-  ctx.shadowColor = '#ff8844'; ctx.shadowBlur = 10;
-  const handleG = ctx.createLinearGradient(-2, -30, 4, -30);
-  handleG.addColorStop(0, '#8B5E3C');
-  handleG.addColorStop(0.4, '#C4915C');
-  handleG.addColorStop(0.6, '#DEB887');
-  handleG.addColorStop(1, '#8B5E3C');
-  ctx.fillStyle = handleG;
+  // === HANDLE — long wooden shaft at an angle ===
   ctx.save();
-  ctx.rotate(-0.25);
-  ctx.fillRect(-2, -32, 4, 30);
-  // Handle grip neon
-  ctx.fillStyle = 'rgba(255,100,50,' + (0.5 + Math.sin(t)*0.3) + ')';
-  ctx.fillRect(-2.5, -34, 5, 6);
-  ctx.restore();
+  ctx.rotate(-0.35); // slight angle
+
+  // Wooden shaft
+  const shaftG = ctx.createLinearGradient(-2, 0, 4, 0);
+  shaftG.addColorStop(0, '#6B4226');
+  shaftG.addColorStop(0.3, '#C4915C');
+  shaftG.addColorStop(0.5, '#DEB887');
+  shaftG.addColorStop(0.7, '#C4915C');
+  shaftG.addColorStop(1, '#6B4226');
+  ctx.fillStyle = shaftG;
+  ctx.fillRect(-2, -34, 4.5, 32);
+
+  // T-grip at top
+  ctx.shadowColor = '#ff6644'; ctx.shadowBlur = 6;
+  const gripG = ctx.createLinearGradient(-7, -38, 7, -34);
+  gripG.addColorStop(0, '#5a3520');
+  gripG.addColorStop(0.3, '#A0764E');
+  gripG.addColorStop(0.5, '#C4915C');
+  gripG.addColorStop(0.7, '#A0764E');
+  gripG.addColorStop(1, '#5a3520');
+  ctx.fillStyle = gripG;
+  roundRect(-7, -38, 14.5, 6, 2.5); ctx.fill();
   ctx.shadowBlur = 0;
 
-  // Blade — metallic
-  const bladeG = ctx.createLinearGradient(-12, 0, 12, 0);
-  bladeG.addColorStop(0, '#666');
-  bladeG.addColorStop(0.3, '#bbb');
-  bladeG.addColorStop(0.5, '#eee');
-  bladeG.addColorStop(0.7, '#bbb');
-  bladeG.addColorStop(1, '#666');
+  // Grip neon accent
+  ctx.fillStyle = 'rgba(255,100,50,' + (0.4 + Math.sin(t)*0.25) + ')';
+  ctx.fillRect(-6, -38, 12.5, 1.5);
+
+  ctx.restore(); // undo rotation
+
+  // === BLADE — classic flat shovel head ===
+  ctx.shadowColor = '#aaccff'; ctx.shadowBlur = 10;
+  const bladeG = ctx.createLinearGradient(-14, 2, 14, 2);
+  bladeG.addColorStop(0, '#556');
+  bladeG.addColorStop(0.2, '#99a');
+  bladeG.addColorStop(0.4, '#ccd');
+  bladeG.addColorStop(0.5, '#eef');
+  bladeG.addColorStop(0.6, '#ccd');
+  bladeG.addColorStop(0.8, '#99a');
+  bladeG.addColorStop(1, '#556');
   ctx.fillStyle = bladeG;
-  ctx.shadowColor = '#aaaaff'; ctx.shadowBlur = 8;
   ctx.beginPath();
-  ctx.moveTo(-12, 0); ctx.lineTo(-8, 14); ctx.quadraticCurveTo(0, 18, 8, 14);
-  ctx.lineTo(12, 0); ctx.closePath(); ctx.fill();
+  ctx.moveTo(-12, -2);  // top left of blade
+  ctx.lineTo(12, -2);   // top right
+  ctx.lineTo(10, 10);   // right side tapers
+  ctx.quadraticCurveTo(0, 18, -10, 10); // rounded bottom point
+  ctx.closePath(); ctx.fill();
   ctx.shadowBlur = 0;
 
-  // Blade edge highlight
-  ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(-10, 2); ctx.quadraticCurveTo(0, 16, 10, 2); ctx.stroke();
+  // Socket — metal collar connecting blade to handle
+  ctx.fillStyle = '#778';
+  ctx.fillRect(-5, -5, 10, 5);
+  ctx.strokeStyle = 'rgba(200,200,220,0.5)'; ctx.lineWidth = 0.8;
+  ctx.strokeRect(-5, -5, 10, 5);
 
-  // Neon accent on blade
-  ctx.fillStyle = 'rgba(150,150,255,' + (0.3 + Math.sin(t*1.4)*0.2) + ')';
-  ctx.fillRect(-8, 4, 16, 2);
+  // Blade edge — sharp bottom highlight
+  ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1.2; ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-10, 10); ctx.quadraticCurveTo(0, 17, 10, 10);
+  ctx.stroke();
+  ctx.lineCap = 'butt';
+
+  // Blade reflection streak
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  ctx.beginPath();
+  ctx.moveTo(-4, 0); ctx.lineTo(-2, 0); ctx.lineTo(-4, 12); ctx.lineTo(-6, 12);
+  ctx.closePath(); ctx.fill();
 
   ctx.restore();
 }
